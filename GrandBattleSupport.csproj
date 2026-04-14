@@ -7,6 +7,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <DefineConstants>USE_IMAGESHARP</DefineConstants>
+    <!-- Map project directory to '.' in PDB/SourceLink to avoid embedding full local paths -->
+    <PathMap>$(MSBuildProjectDirectory)=.</PathMap>
   </PropertyGroup>
 
   <ItemGroup>

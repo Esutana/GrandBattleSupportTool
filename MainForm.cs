@@ -52,6 +52,7 @@ namespace GrandBattleSupport
         private Label _status = null!;
         private Button _copyPrevButton = null!;
         private Button _saveButton = null!;
+        private Button _clearButton = null!;
         private Button _saveAsButton = null!;
         private Button _exportGifButton = null!;
         private bool _isDirty = false;
@@ -89,6 +90,25 @@ namespace GrandBattleSupport
             RefreshLeftGridForDay();
             RefreshTotals();
             _mapBox.Invalidate();
+        }
+
+        // 選択日の所持状態をすべてクリア（確認ダイアログあり）
+        private void ClearOwnersForSelectedDay()
+        {
+            int day = SelectedDay;
+            if (MessageBox.Show($"{day}日目の所持状態をすべてクリアします。よろしいですか？", "確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+
+            foreach (var node in _nodes.Values)
+            {
+                _owner.SetOwner(day, node.Id, null);
+            }
+
+            _isDirty = true;
+            RefreshLeftGridForDay();
+            RefreshTotals();
+            _mapBox.Invalidate();
+            SetStatus($"{day}日目の所持状態をクリアしました");
         }
 
         // 名前を付けて保存（保存一覧ダイアログ）
@@ -420,7 +440,7 @@ namespace GrandBattleSupport
             var dayBox = new GroupBox
             {
                 Text = "表示日",
-                Width = 190,
+                Width = 152,
                 Height = 64
             };
             topControls.Controls.Add(dayBox);
@@ -468,6 +488,18 @@ namespace GrandBattleSupport
             _saveButton.Click += (_, __) => SaveOwnersToFile();
             topControls.Controls.Add(_saveButton);
 
+            // クリアボタン
+            _clearButton = new Button
+            {
+                Text = "クリア",
+                AutoSize = true,
+                Height = 32,
+                Width = 80,
+                Margin = new Padding(4, 24, 8, 8)
+            };
+            _clearButton.Click += (_, __) => ClearOwnersForSelectedDay();
+            topControls.Controls.Add(_clearButton);
+
             // 保存（名前を付けて）
             _saveAsButton = new Button
             {
@@ -498,7 +530,7 @@ namespace GrandBattleSupport
             _teamGroup = new GroupBox
             {
                 Text = "入力チーム（クリックで割当）",
-                Width = 430,
+                Width = 344,
                 Height = 64
             };
             topControls.Controls.Add(_teamGroup);

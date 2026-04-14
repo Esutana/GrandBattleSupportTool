@@ -54,6 +54,7 @@ namespace GrandBattleSupport
         private Button _saveButton = null!;
         private Button _saveAsButton = null!;
         private Button _exportGifButton = null!;
+        private bool _isDirty = false;
 
         // 選択状態
         private int SelectedDay => (int)_daySelector.Value; // 1..6
@@ -82,6 +83,8 @@ namespace GrandBattleSupport
             LoadDataOrFallback();
             LoadTeamIcons();
             LoadOwnersIfExists();
+            // track form closing to prompt save if needed
+            this.FormClosing += MainForm_FormClosing;
             InitializeGridRows();
             RefreshLeftGridForDay();
             RefreshTotals();
@@ -97,9 +100,11 @@ namespace GrandBattleSupport
 
             var topPanel = new Panel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(8) };
             var nameBox = new TextBox { Width = 420, Location = new Point(8, 8) };
-            var btnSave = new Button { Text = "保存", Location = new Point(440, 6), AutoSize = true };
+            var btnOverwrite = new Button { Text = "上書保存", Location = new Point(440, 6), AutoSize = true };
+            var btnNew = new Button { Text = "新規保存", Location = new Point(540, 6), AutoSize = true };
             topPanel.Controls.Add(nameBox);
-            topPanel.Controls.Add(btnSave);
+            topPanel.Controls.Add(btnOverwrite);
+            topPanel.Controls.Add(btnNew);
 
             var sep = new Label { Dock = DockStyle.Top, Height = 2, BackColor = SystemColors.ControlDark }; 
 
@@ -128,7 +133,47 @@ namespace GrandBattleSupport
                 }
             }
 
-            btnSave.Click += (_, __) =>
+            // 上書保存 (選択中の行を上書き)
+            btnOverwrite.Click += (_, __) =>
+            {
+                if (grid.SelectedRows.Count == 0)
+                {
+                    MessageBox.Show("上書きする保存データを一覧から選択してください。", "選択なし", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                var row = grid.SelectedRows[0];
+                var path = row.Tag as string;
+                if (path is null)
+                {
+                    MessageBox.Show("選択された行のパスが不正です。", "エラー", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
+                try
+                {
+                    var list = new List<OwnerDto>();
+                    foreach (var key in _owner.GetAllKeys())
+                    {
+                        list.Add(new OwnerDto { Day = key.day, NodeId = key.nodeId, TeamId = _owner.GetOwner(key.day, key.nodeId) });
+                    }
+
+                    var saveName = (nameBox.Text ?? string.Empty).Trim();
+                    var pkg = new SavePackage { Name = string.IsNullOrEmpty(saveName) ? null : saveName, SavedAt = DateTime.Now, Data = list, GuildNames = _teamNames };
+                    var json = JsonSerializer.Serialize(pkg, new JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(path, json);
+                    SetStatus($"所持状態を {path} に上書き保存しました");
+                    _isDirty = false;
+                    RefreshList();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "上書き保存失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+
+            // 新規保存
+            btnNew.Click += (_, __) =>
             {
                 var saveName = (nameBox.Text ?? string.Empty).Trim();
                 if (string.IsNullOrEmpty(saveName))
@@ -152,6 +197,7 @@ namespace GrandBattleSupport
                     var json = JsonSerializer.Serialize(pkg, new JsonSerializerOptions { WriteIndented = true });
                     File.WriteAllText(path, json);
                     SetStatus($"所持状態を {path} に保存しました");
+                    _isDirty = false;
                     RefreshList();
                 }
                 catch (Exception ex)
@@ -192,6 +238,7 @@ namespace GrandBattleSupport
                         RefreshLeftGridForDay();
                         RefreshTotals();
                         _mapBox.Invalidate();
+                        _isDirty = false;
                         SetStatus($"{path} を読み込みました");
                         dlg.Close();
                     }
@@ -640,6 +687,8 @@ namespace GrandBattleSupport
                 _owner.SetOwner(day, node.Id, ownerPrev);
             }
 
+            _isDirty = true;
+
             RefreshLeftGridForDay();
             RefreshTotals();
             _mapBox.Invalidate();
@@ -667,6 +716,7 @@ namespace GrandBattleSupport
                 var path = Path.Combine(SaveFolder, "owners.json.tmp");
                 File.WriteAllText(path, json);
                 SetStatus($"一時保存しました: {path}");
+                _isDirty = false;
             }
             catch (Exception ex)
             {
@@ -940,6 +990,7 @@ namespace GrandBattleSupport
             {
                 _owner.SetOwner(day, nodeId, null);
                 AfterOwnerChanged(day, nodeId, "解除（右クリック）");
+                _isDirty = true;
                 return;
             }
 
@@ -952,11 +1003,13 @@ namespace GrandBattleSupport
             {
                 _owner.SetOwner(day, nodeId, null);
                 AfterOwnerChanged(day, nodeId, $"解除（{_teamNames[team]} だったのでトグル）");
+                _isDirty = true;
             }
             else
             {
                 _owner.SetOwner(day, nodeId, team);
                 AfterOwnerChanged(day, nodeId, $"割当 → {_teamNames[team]}");
+                _isDirty = true;
             }
         }
 
@@ -1135,6 +1188,34 @@ namespace GrandBattleSupport
         private void SetStatus(string text)
         {
             _status.Text = text;
+        }
+
+        private void MainForm_FormClosing(object? sender, FormClosingEventArgs e)
+        {
+            if (!_isDirty) return;
+
+            var result = MessageBox.Show(
+                "保存されていない変更があります。\n保存しますか？",
+                "確認",
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button1);
+
+            if (result == DialogResult.Yes)
+            {
+                // 保存して終了
+                SaveOwnersToFile();
+                return;
+            }
+
+            if (result == DialogResult.No)
+            {
+                // 保存せず終了
+                return;
+            }
+
+            // キャンセル
+            e.Cancel = true;
         }
 
         // =============================

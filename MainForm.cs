@@ -6,11 +6,8 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Windows.Forms;
-using System.Drawing.Imaging;
 #if USE_IMAGESHARP
 using SixLabors.ImageSharp.Formats.Gif;
-using SixLabors.ImageSharp.PixelFormats;
-using ImageSharpImage = SixLabors.ImageSharp.Image;
 #endif
 
 namespace GrandBattleSupport
@@ -19,8 +16,7 @@ namespace GrandBattleSupport
     {
         private const int Days = 6;
         private const int TeamCount = 4;
-        private const int TeamCount2 = 5;
-        // チーム色（自由に変えてOK）
+        // チーム色
         private readonly Color[] _teamColors = new[]
         {
             Color.FromArgb(220, 231, 76, 60),  // Team A (赤)
@@ -30,6 +26,14 @@ namespace GrandBattleSupport
         };
 
         private readonly string[] _teamNames = new[] { "A", "B", "C", "D" };
+        private readonly Image?[] _teamIcons = new Image?[TeamCount];
+        private static readonly string[] TeamIconFiles =
+        {
+            Path.Combine("image", "flag_a.jpg"),
+            Path.Combine("image", "flag_b.jpg"),
+            Path.Combine("image", "flag_c.jpg"),
+            Path.Combine("image", "flag_d.jpg")
+        };
 
         private Dictionary<int, Node> _nodes = new();
         private OwnerState _owner = new(Days, TeamCount);
@@ -46,11 +50,10 @@ namespace GrandBattleSupport
         private GroupBox _totalsGroup = null!;
         private Label[] _totalLabels = null!;
         private Label _status = null!;
-        private Button _copyPrevButton = null!; // ← 追加
-        private Button _saveButton = null!; // ← 現在値保存ボタン
-        private Button _saveAsButton = null!; // 保存（名前を付けて）
-        private Button _loadButton = null!; // 読込
-        private Button _exportGifButton = null!; // GIF 出力
+        private Button _copyPrevButton = null!;
+        private Button _saveButton = null!;
+        private Button _saveAsButton = null!;
+        private Button _exportGifButton = null!;
 
         // 選択状態
         private int SelectedDay => (int)_daySelector.Value; // 1..6
@@ -59,21 +62,25 @@ namespace GrandBattleSupport
         // クリック判定（円の半径）
         private const int HitRadius = 22;
         private const int DrawRadius = 14;
+        private const int IconDrawSize = 30;
 
         // ファイル名
         private const string NodesJsonFile = "nodes.json";
+        // 保存フォルダ
+        private const string SaveFolder = "save";
         // map.jpg 取得のためのパス（実行ファイルからの相対パス）
         private static readonly string MapImageFile = Path.Combine("image", "map.jpg");
 
         public MainForm()
         {
-            Text = "メメントモリ グラバトポイント計算（最小動作）";
+            Text = "メメントモリ グラバトポイント計算";
             Width = 1400;
             Height = 900;
             StartPosition = FormStartPosition.CenterScreen;
 
             BuildUi();
             LoadDataOrFallback();
+            LoadTeamIcons();
             LoadOwnersIfExists();
             InitializeGridRows();
             RefreshLeftGridForDay();
@@ -81,61 +88,134 @@ namespace GrandBattleSupport
             _mapBox.Invalidate();
         }
 
-        // 名前を付けて保存（ファイル選択ダイアログ）
+        // 名前を付けて保存（保存一覧ダイアログ）
         private void SaveOwnersToFileAs()
         {
-            using var sfd = new SaveFileDialog { Filter = "JSON files|*.json|All files|*.*", FileName = "owners.json" };
-            if (sfd.ShowDialog() != DialogResult.OK) return;
+            Directory.CreateDirectory(SaveFolder);
 
-            try
+            using var dlg = new Form { Text = "保存", Width = 700, Height = 420, StartPosition = FormStartPosition.CenterParent };
+
+            var topPanel = new Panel { Dock = DockStyle.Top, Height = 40, Padding = new Padding(8) };
+            var nameBox = new TextBox { Width = 420, Location = new Point(8, 8) };
+            var btnSave = new Button { Text = "保存", Location = new Point(440, 6), AutoSize = true };
+            topPanel.Controls.Add(nameBox);
+            topPanel.Controls.Add(btnSave);
+
+            var sep = new Label { Dock = DockStyle.Top, Height = 2, BackColor = SystemColors.ControlDark }; 
+
+            var grid = new DataGridView { Dock = DockStyle.Fill, ReadOnly = true, AllowUserToAddRows = false, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect };
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "No", HeaderText = "No", Width = 50 });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Name", HeaderText = "名前", AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill });
+            grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Updated", HeaderText = "更新日時", Width = 160 });
+            var loadCol = new DataGridViewButtonColumn { Name = "Load", HeaderText = "操作", Text = "読込", UseColumnTextForButtonValue = true, Width = 80 };
+            var delCol = new DataGridViewButtonColumn { Name = "Delete", HeaderText = "", Text = "削除", UseColumnTextForButtonValue = true, Width = 80 };
+            grid.Columns.Add(loadCol);
+            grid.Columns.Add(delCol);
+
+            void RefreshList()
             {
-                var list = new List<OwnerDto>();
-                foreach (var key in _owner.GetAllKeys())
+                grid.Rows.Clear();
+                var files = Directory.GetFiles(SaveFolder, "*.json").OrderByDescending(f => File.GetLastWriteTimeUtc(f)).ToArray();
+                int idx = 1;
+                foreach (var f in files)
                 {
-                    list.Add(new OwnerDto { Day = key.day, NodeId = key.nodeId, TeamId = _owner.GetOwner(key.day, key.nodeId) });
+                    var pkg = ReadOwnerListFromFile(f, out var name, out var savedAt);
+                    var displayName = name ?? Path.GetFileNameWithoutExtension(f);
+                    var dt = savedAt ?? File.GetLastWriteTime(f);
+                    grid.Rows.Add(idx.ToString(), displayName, dt.ToString("MM/dd HH:mm"));
+                    grid.Rows[grid.Rows.Count - 1].Tag = f;
+                    idx++;
                 }
-                var json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText(sfd.FileName, json);
-                SetStatus($"所持状態を {sfd.FileName} に保存しました");
             }
-            catch (Exception ex)
+
+            btnSave.Click += (_, __) =>
             {
-                SetStatus("保存に失敗しました: " + ex.Message);
-            }
-        }
-
-        private void LoadOwnersFromFileDialog()
-        {
-            using var ofd = new OpenFileDialog { Filter = "JSON files|*.json|All files|*.*", FileName = "owners.json" };
-            if (ofd.ShowDialog() != DialogResult.OK) return;
-            try
-            {
-                var json = File.ReadAllText(ofd.FileName);
-                var list = JsonSerializer.Deserialize<List<OwnerDto>>(json, JsonOpts());
-                if (list is null) return;
-
-                // 既存状態をクリア
-                _owner.Clear();
-
-                foreach (var o in list)
+                var saveName = (nameBox.Text ?? string.Empty).Trim();
+                if (string.IsNullOrEmpty(saveName))
                 {
-                    _owner.SetOwner(o.Day, o.NodeId, o.TeamId);
+                    MessageBox.Show("保存名を入力してください。", "入力エラー", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
                 }
 
-                RefreshLeftGridForDay();
-                RefreshTotals();
-                _mapBox.Invalidate();
-                SetStatus($"{ofd.FileName} から所持状態を読み込みました");
-            }
-            catch (Exception ex)
+                try
+                {
+                    var list = new List<OwnerDto>();
+                    foreach (var key in _owner.GetAllKeys())
+                    {
+                        list.Add(new OwnerDto { Day = key.day, NodeId = key.nodeId, TeamId = _owner.GetOwner(key.day, key.nodeId) });
+                    }
+
+                    var pkg = new SavePackage { Name = saveName, SavedAt = DateTime.Now, Data = list };
+                    var safe = string.Concat(saveName.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
+                    var fn = DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + (string.IsNullOrEmpty(safe) ? "save" : safe) + ".json";
+                    var path = Path.Combine(SaveFolder, fn);
+                    var json = JsonSerializer.Serialize(pkg, new JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText(path, json);
+                    SetStatus($"所持状態を {path} に保存しました");
+                    RefreshList();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "保存失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            };
+
+            grid.CellContentClick += (_, e) =>
             {
-                SetStatus("読込に失敗しました: " + ex.Message);
-            }
+                if (e.RowIndex < 0) return;
+                var row = grid.Rows[e.RowIndex];
+                var path = row.Tag as string;
+                if (path is null) return;
+
+                if (grid.Columns[e.ColumnIndex].Name == "Load")
+                {
+                    try
+                    {
+                        string? tmpName = null;
+                        DateTime? tmpSaved = null;
+                        var arr = ReadOwnerListFromFile(path, out tmpName, out tmpSaved);
+                        if (arr is null) throw new InvalidOperationException("ファイルの内容が不正です");
+                        _owner.Clear();
+                        foreach (var o in arr) _owner.SetOwner(o.Day, o.NodeId, o.TeamId);
+                        RefreshLeftGridForDay();
+                        RefreshTotals();
+                        _mapBox.Invalidate();
+                        SetStatus($"{path} を読み込みました");
+                        dlg.Close();
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(ex.Message, "読込失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+                else if (grid.Columns[e.ColumnIndex].Name == "Delete")
+                {
+                    if (MessageBox.Show($"{path} を削除しますか？", "削除確認", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+                    try
+                    {
+                        File.Delete(path);
+                        RefreshList();
+                        SetStatus($"{path} を削除しました");
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(ex.Message, "削除失敗", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            };
+
+            dlg.Controls.Add(grid);
+            dlg.Controls.Add(sep);
+            dlg.Controls.Add(topPanel);
+
+            RefreshList();
+            dlg.ShowDialog(this);
         }
 
         private void ExportGifDialog()
         {
-            using var sfd = new SaveFileDialog { Filter = "GIF|*.gif", FileName = "export.gif" };
+            Directory.CreateDirectory(SaveFolder);
+            using var sfd = new SaveFileDialog { Filter = "GIF|*.gif", FileName = "export.gif", InitialDirectory = SaveFolder };
             if (sfd.ShowDialog() != DialogResult.OK) return;
 
             try
@@ -145,11 +225,10 @@ namespace GrandBattleSupport
             }
             catch (Exception ex)
             {
-                // Write full exception to log and show a message box for easier debugging
                 try
                 {
                     var full = ex.ToString();
-                    File.WriteAllText("gif_error.log", full);
+                    File.WriteAllText(Path.Combine(SaveFolder, "gif_error.log"), full);
                 }
                 catch { }
 
@@ -196,16 +275,7 @@ namespace GrandBattleSupport
                 var owner = _owner.GetOwner(day, node.Id);
                 if (owner is null) continue;
 
-                var teamColor = _teamColors[owner.Value];
-                using var brush = new SolidBrush(teamColor);
-                int r = DrawRadius;
-                g.FillEllipse(brush, node.Position.X - r, node.Position.Y - r, r * 2, r * 2);
-                g.DrawEllipse(Pens.Black, node.Position.X - r, node.Position.Y - r, r * 2, r * 2);
-
-                // point text
-                var text = node.Point.ToString();
-                var sz = g.MeasureString(text, Font);
-                g.DrawString(text, Font, Brushes.White, node.Position.X - sz.Width / 2, node.Position.Y - sz.Height / 2);
+                DrawTeamMarker(g, node.Position, owner.Value, node.Point);
             }
 
             // Optionally, draw day number
@@ -220,48 +290,6 @@ namespace GrandBattleSupport
 
             return bmp;
         }
-
-#if USE_IMAGESHARP
-        // Convert Bitmap to Rgba32[] for ImageSharp
-        private static Rgba32[] BitmapToRgba32(Bitmap bmp)
-        {
-            var w = bmp.Width;
-            var h = bmp.Height;
-            var arr = new Rgba32[w * h];
-
-            var rect = new Rectangle(0, 0, w, h);
-            var data = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
-            try
-            {
-                var bytes = new byte[Math.Abs(data.Stride) * h];
-                System.Runtime.InteropServices.Marshal.Copy(data.Scan0, bytes, 0, bytes.Length);
-                int stride = data.Stride;
-                for (int y = 0; y < h; y++)
-                {
-                    for (int x = 0; x < w; x++)
-                    {
-                        int idx = y * stride + x * 4;
-                        byte b = bytes[idx + 0];
-                        byte g = bytes[idx + 1];
-                        byte r = bytes[idx + 2];
-                        byte a = bytes[idx + 3];
-                        arr[y * w + x] = new Rgba32(r, g, b, a);
-                    }
-                }
-            }
-            finally
-            {
-                bmp.UnlockBits(data);
-            }
-
-            return arr;
-        }
-#else
-        private static object BitmapToRgba32(Bitmap bmp)
-        {
-            throw new NotSupportedException("Bitmap->ImageSharp 変換には ImageSharp が必要です。プロジェクトにパッケージを追加し、USE_IMAGESHARP を定義してください。");
-        }
-#endif
 
         private void BuildUi()
         {
@@ -310,8 +338,7 @@ namespace GrandBattleSupport
             _daySelector.ValueChanged += (_, __) =>
             {
                 _mapBox.Invalidate();
-                RefreshLeftGridForDay(); // 一応最新反映
-                // ボタンの有効/無効を切り替え
+                RefreshLeftGridForDay();
                 if (_copyPrevButton is not null)
                     _copyPrevButton.Enabled = SelectedDay > 1;
                 SetStatus($"表示日を {SelectedDay} 日目に変更");
@@ -334,7 +361,7 @@ namespace GrandBattleSupport
             // 現在の入力値を保存するボタン
             _saveButton = new Button
             {
-                Text = "保存",
+                Text = "一時保存",
                 AutoSize = true,
                 Height = 32,
                 Width = 80,
@@ -346,7 +373,7 @@ namespace GrandBattleSupport
             // 保存（名前を付けて）
             _saveAsButton = new Button
             {
-                Text = "名前を付けて保存",
+                Text = "保存管理",
                 AutoSize = true,
                 Height = 32,
                 Width = 140,
@@ -355,17 +382,7 @@ namespace GrandBattleSupport
             _saveAsButton.Click += (_, __) => SaveOwnersToFileAs();
             topControls.Controls.Add(_saveAsButton);
 
-            // 読込
-            _loadButton = new Button
-            {
-                Text = "読込",
-                AutoSize = true,
-                Height = 32,
-                Width = 80,
-                Margin = new Padding(4, 24, 8, 8)
-            };
-            _loadButton.Click += (_, __) => LoadOwnersFromFileDialog();
-            topControls.Controls.Add(_loadButton);
+            // 読込ボタンは保存管理ダイアログで扱うため削除
 
             // GIF 出力
             _exportGifButton = new Button
@@ -427,7 +444,7 @@ namespace GrandBattleSupport
 
             mapScrollPanel.Controls.Add(_mapBox);
 
-            // LEFT相当のパネルを MAP の下面に置く（ここが以前の左パネルの中身）
+            // 下段の一覧パネル
             var leftPanel = new Panel
             {
                 Dock = DockStyle.Bottom,
@@ -436,7 +453,6 @@ namespace GrandBattleSupport
             };
             _rightPanel.Controls.Add(leftPanel);
 
-            // Use a TableLayoutPanel so we can place the guild name inputs directly above the grid rows
             var leftTitle = new Label
             {
                 Text = "日別の所持拠点一覧（MAPクリックで更新）",
@@ -463,7 +479,6 @@ namespace GrandBattleSupport
                 int idx = i;
                 tb.TextChanged += (_, __) =>
                 {
-                    // 配列要素を更新して表示を反映
                     _teamNames[idx] = tb.Text;
                     UpdateTeamNameDisplays();
                 };
@@ -484,7 +499,6 @@ namespace GrandBattleSupport
                 AllowUserToResizeColumns = false,
                 ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.AutoSize
             };
-            // Compose with TableLayoutPanel: title (Auto), name inputs (Auto), grid (Fill)
             var leftLayout = new TableLayoutPanel
             {
                 Dock = DockStyle.Fill,
@@ -595,8 +609,11 @@ namespace GrandBattleSupport
                 }
 
                 var json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
-                File.WriteAllText("owners.json", json);
-                SetStatus("所持状態を owners.json に保存しました");
+                // 一時保存として save フォルダ内に書き出す（拡張子 .tmp を付与）
+                Directory.CreateDirectory(SaveFolder);
+                var path = Path.Combine(SaveFolder, "owners.json.tmp");
+                File.WriteAllText(path, json);
+                SetStatus($"一時保存しました: {path}");
             }
             catch (Exception ex)
             {
@@ -608,15 +625,16 @@ namespace GrandBattleSupport
         {
             try
             {
-                if (!File.Exists("owners.json")) return;
-                var json = File.ReadAllText("owners.json");
+                var path = Path.Combine(SaveFolder, "owners.json");
+                if (!File.Exists(path)) return;
+                var json = File.ReadAllText(path);
                 var list = JsonSerializer.Deserialize<List<OwnerDto>>(json, JsonOpts());
                 if (list is null) return;
                 foreach (var o in list)
                 {
                     _owner.SetOwner(o.Day, o.NodeId, o.TeamId);
                 }
-                SetStatus("owners.json から所持状態を読み込みました");
+                SetStatus($"{path} から所持状態を読み込みました");
             }
             catch (Exception ex)
             {
@@ -629,6 +647,45 @@ namespace GrandBattleSupport
             public int Day { get; set; }
             public int NodeId { get; set; }
             public int? TeamId { get; set; }
+        }
+
+        private sealed class SavePackage
+        {
+            public string? Name { get; set; }
+            public DateTime SavedAt { get; set; }
+            public List<OwnerDto>? Data { get; set; }
+        }
+
+        // 保存形式（配列形式/パッケージ形式）の両方に対応して読込
+        private static List<OwnerDto>? ReadOwnerListFromFile(string path, out string? name, out DateTime? savedAt)
+        {
+            name = null;
+            savedAt = null;
+            var json = File.ReadAllText(path);
+            try
+            {
+                var pkg = JsonSerializer.Deserialize<SavePackage>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (pkg is not null && pkg.Data is not null)
+                {
+                    name = pkg.Name;
+                    savedAt = pkg.SavedAt == default ? (DateTime?)File.GetLastWriteTime(path) : pkg.SavedAt;
+                    return pkg.Data;
+                }
+            }
+            catch { }
+
+            try
+            {
+                var arr = JsonSerializer.Deserialize<List<OwnerDto>>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (arr is not null)
+                {
+                    savedAt = File.GetLastWriteTime(path);
+                    return arr;
+                }
+            }
+            catch { }
+
+            return null;
         }
 
         private void LoadDataOrFallback()
@@ -672,6 +729,22 @@ namespace GrandBattleSupport
                 // フォールバック（最小サンプル）
                 _nodes = CreateFallbackNodes();
                 SetStatus($"警告: {NodesJsonFile} が見つからないため、サンプル拠点で起動しました。");
+            }
+        }
+
+        private void LoadTeamIcons()
+        {
+            for (int i = 0; i < TeamCount; i++)
+            {
+                _teamIcons[i]?.Dispose();
+                _teamIcons[i] = null;
+
+                var iconPath = TeamIconFiles[i];
+                if (!File.Exists(iconPath)) continue;
+
+                using var fs = new FileStream(iconPath, FileMode.Open, FileAccess.Read);
+                using var src = Image.FromStream(fs);
+                _teamIcons[i] = new Bitmap(src);
             }
         }
 
@@ -811,19 +884,32 @@ namespace GrandBattleSupport
                 var screenPoint = TranslateToControlPoint(_mapBox, node.Position);
                 if (screenPoint is null) continue;
 
-                using var brush = new SolidBrush(_teamColors[owner.Value]);
-                var r = DrawRadius;
-                e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                e.Graphics.FillEllipse(brush, screenPoint.Value.X - r, screenPoint.Value.Y - r, r * 2, r * 2);
-                e.Graphics.DrawEllipse(Pens.Black, screenPoint.Value.X - r, screenPoint.Value.Y - r, r * 2, r * 2);
-
-                // 点数の小表示
-                var text = node.Point.ToString();
-                var sz = e.Graphics.MeasureString(text, Font);
-                e.Graphics.DrawString(text, Font, Brushes.White,
-                    screenPoint.Value.X - sz.Width / 2,
-                    screenPoint.Value.Y - sz.Height / 2);
+                DrawTeamMarker(e.Graphics, screenPoint.Value, owner.Value, node.Point);
             }
+        }
+
+        private void DrawTeamMarker(Graphics g, Point center, int teamId, int point)
+        {
+            if (teamId < 0 || teamId >= TeamCount) return;
+
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+
+            var icon = _teamIcons[teamId];
+            if (icon is not null)
+            {
+                var rect = new Rectangle(center.X - IconDrawSize / 2, center.Y - IconDrawSize / 2, IconDrawSize, IconDrawSize);
+                g.DrawImage(icon, rect);
+            }
+            else
+            {
+                using var brush = new SolidBrush(_teamColors[teamId]);
+                g.FillEllipse(brush, center.X - DrawRadius, center.Y - DrawRadius, DrawRadius * 2, DrawRadius * 2);
+                g.DrawEllipse(Pens.Black, center.X - DrawRadius, center.Y - DrawRadius, DrawRadius * 2, DrawRadius * 2);
+            }
+
+            var text = point.ToString();
+            var sz = g.MeasureString(text, Font);
+            g.DrawString(text, Font, Brushes.White, center.X - sz.Width / 2, center.Y - sz.Height / 2);
         }
 
         // =============================

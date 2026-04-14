@@ -1,0 +1,237 @@
+[
+  {
+    "Id": 1,
+    "Name": "アイン",
+    "Type": "Temple",
+    "Point": 4,
+    "Position": {
+      "X": 790,
+      "Y": 682
+    },
+    "Neighbors": [ 2, 3, 4, 5 ]
+  },
+
+  {
+    "Id": 2,
+    "Name": "テファレト",
+    "Type": "Castle",
+    "Point": 2,
+    "Position": {
+      "X": 590,
+      "Y": 525
+    },
+    "Neighbors": [ 1, 6, 7, 21 ]
+  },
+  {
+    "Id": 3,
+    "Name": "イエソド",
+    "Type": "Castle",
+    "Point": 2,
+    "Position": {
+      "X": 1000,
+      "Y": 610
+    },
+    "Neighbors": [ 1, 10, 13 ]
+  },
+  {
+    "Id": 4,
+    "Name": "マルクト",
+    "Type": "Castle",
+    "Point": 2,
+    "Position": {
+      "X": 940,
+      "Y": 890
+    },
+    "Neighbors": [ 1, 14, 17 ]
+  },
+  {
+    "Id": 5,
+    "Name": "ケテル",
+    "Type": "Castle",
+    "Point": 2,
+    "Position": {
+      "X": 500,
+      "Y": 890
+    },
+    "Neighbors": [ 1, 17, 19 ]
+  },
+
+  {
+    "Id": 6,
+    "Name": "ガネット",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 215,
+      "Y": 285
+    },
+    "Neighbors": [ 2, 7 ]
+  },
+  {
+    "Id": 7,
+    "Name": "ルラ",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 600,
+      "Y": 150
+    },
+    "Neighbors": [ 2, 6, 8 ]
+  },
+  {
+    "Id": 8,
+    "Name": "クシェル",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 855,
+      "Y": 300
+    },
+    "Neighbors": [ 3, 7, 9 ]
+  },
+  {
+    "Id": 9,
+    "Name": "ファリア",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 1110,
+      "Y": 175
+    },
+    "Neighbors": [ 8, 10 ]
+  },
+  {
+    "Id": 10,
+    "Name": "シトリ",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 1245,
+      "Y": 340
+    },
+    "Neighbors": [ 3, 9, 11 ]
+  },
+  {
+    "Id": 11,
+    "Name": "トパズ",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 1450,
+      "Y": 465
+    },
+    "Neighbors": [ 10, 12 ]
+  },
+  {
+    "Id": 12,
+    "Name": "メラル",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 1405,
+      "Y": 685
+    },
+    "Neighbors": [ 11, 13 ]
+  },
+  {
+    "Id": 13,
+    "Name": "ペリド",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 1210,
+      "Y": 760
+    },
+    "Neighbors": [ 3, 12, 4 ]
+  },
+
+  {
+    "Id": 14,
+    "Name": "ラピス",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 1140,
+      "Y": 1100
+    },
+    "Neighbors": [ 4, 15 ]
+  },
+  {
+    "Id": 15,
+    "Name": "ラリマル",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 930,
+      "Y": 1425
+    },
+    "Neighbors": [ 14, 16 ]
+  },
+  {
+    "Id": 16,
+    "Name": "マリン",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 630,
+      "Y": 1260
+    },
+    "Neighbors": [ 15, 17 ]
+  },
+  {
+    "Id": 17,
+    "Name": "アメト",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 680,
+      "Y": 1060
+    },
+    "Neighbors": [ 4, 5, 16 ]
+  },
+
+  {
+    "Id": 18,
+    "Name": "ラベン",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 355,
+      "Y": 1235
+    },
+    "Neighbors": [ 19, 16 ]
+  },
+  {
+    "Id": 19,
+    "Name": "ジルコン",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 280,
+      "Y": 890
+    },
+    "Neighbors": [ 5, 18, 20 ]
+  },
+  {
+    "Id": 20,
+    "Name": "オニキス",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 105,
+      "Y": 730
+    },
+    "Neighbors": [ 19, 21 ]
+  },
+  {
+    "Id": 21,
+    "Name": "フロライト",
+    "Type": "Church",
+    "Point": 1,
+    "Position": {
+      "X": 295,
+      "Y": 495
+    },
+    "Neighbors": [ 2, 20 ]
+  }
+]

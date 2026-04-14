@@ -281,6 +281,8 @@ namespace GrandBattleSupport
             g.DrawImage(baseImg, 0, 0, bmp.Width, bmp.Height);
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
+            DrawDayTeamTotals(g, bmp.Size, day);
+
             // Draw markers
             foreach (var node in _nodes.Values)
             {
@@ -290,17 +292,54 @@ namespace GrandBattleSupport
                 DrawTeamMarker(g, node.Position, owner.Value, node.Point);
             }
 
-            // Optionally, draw day number
-            using var dayFont = new Font(Font.FontFamily, 48, FontStyle.Bold);
-            var dayText = $"{day}日目";
-            var daySz = g.MeasureString(dayText, dayFont);
-            var margin = 16;
-            var rect = new RectangleF(bmp.Width - (float)daySz.Width - margin, bmp.Height - (float)daySz.Height - margin, daySz.Width, daySz.Height);
-            using var bgBrush = new SolidBrush(Color.FromArgb(128, Color.Black));
-            g.FillRectangle(bgBrush, rect);
-            g.DrawString(dayText, dayFont, Brushes.White, rect.Location);
-
             return bmp;
+        }
+
+        private void DrawDayTeamTotals(Graphics g, Size canvasSize, int day)
+        {
+            var totals = CalcTotalPoints(day, TeamCount, _nodes, _owner);
+            using var teamLineFont = new Font(Font.FontFamily, 20, FontStyle.Bold);
+            using var dayFont = new Font(Font.FontFamily, 28, FontStyle.Bold);
+
+            var teamLines = new string[TeamCount];
+            for (int i = 0; i < TeamCount; i++)
+            {
+                teamLines[i] = $"{_teamNames[i]}：{totals[i]}PT";
+            }
+            var dayText = $"{day}日目";
+
+            var maxWidth = 0f;
+            foreach (var line in teamLines)
+            {
+                var size = g.MeasureString(line, teamLineFont);
+                if (size.Width > maxWidth) maxWidth = size.Width;
+            }
+            var daySize = g.MeasureString(dayText, dayFont);
+            if (daySize.Width > maxWidth) maxWidth = daySize.Width;
+
+            var margin = 16f;
+            var padding = 12f;
+            var lineHeight = g.MeasureString("A", teamLineFont).Height;
+            var dayHeight = daySize.Height;
+            var panelWidth = maxWidth + padding * 2;
+            var panelHeight = lineHeight * TeamCount + dayHeight + padding * 2 + 6f;
+
+            var panelRect = new RectangleF(
+                canvasSize.Width - panelWidth - margin,
+                canvasSize.Height - panelHeight - margin,
+                panelWidth,
+                panelHeight);
+            using var panelBrush = new SolidBrush(Color.FromArgb(140, Color.Black));
+            g.FillRectangle(panelBrush, panelRect);
+
+            for (int i = 0; i < TeamCount; i++)
+            {
+                var y = panelRect.Y + padding + i * lineHeight;
+                g.DrawString(teamLines[i], teamLineFont, Brushes.White, panelRect.X + padding, y);
+            }
+
+            var dayY = panelRect.Y + padding + TeamCount * lineHeight + 4f;
+            g.DrawString(dayText, dayFont, Brushes.White, panelRect.X + padding, dayY);
         }
 
         private void BuildUi()

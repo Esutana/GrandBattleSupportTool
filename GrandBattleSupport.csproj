@@ -19,16 +19,16 @@
   <None Update="image\map.jpg">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
-  <None Update="image\flag_a.jpg">
+  <None Update="image\flag_a.png">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
-  <None Update="image\flag_b.jpg">
+  <None Update="image\flag_b.png">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
-  <None Update="image\flag_c.jpg">
+  <None Update="image\flag_c.png">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
-  <None Update="image\flag_d.jpg">
+  <None Update="image\flag_d.png">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
   </None>
   <None Update="nodes.json">

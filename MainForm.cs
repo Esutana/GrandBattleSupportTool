@@ -29,10 +29,10 @@ namespace GrandBattleSupport
         private readonly Image?[] _teamIcons = new Image?[TeamCount];
         private static readonly string[] TeamIconFiles =
         {
-            Path.Combine("image", "flag_a.jpg"),
-            Path.Combine("image", "flag_b.jpg"),
-            Path.Combine("image", "flag_c.jpg"),
-            Path.Combine("image", "flag_d.jpg")
+            Path.Combine("image", "flag_a.png"),
+            Path.Combine("image", "flag_b.png"),
+            Path.Combine("image", "flag_c.png"),
+            Path.Combine("image", "flag_d.png")
         };
 
         private Dictionary<int, Node> _nodes = new();

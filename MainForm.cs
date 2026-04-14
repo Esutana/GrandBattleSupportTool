@@ -119,7 +119,7 @@ namespace GrandBattleSupport
                 int idx = 1;
                 foreach (var f in files)
                 {
-                    var pkg = ReadOwnerListFromFile(f, out var name, out var savedAt);
+                    var pkg = ReadOwnerListFromFile(f, out var name, out var savedAt, out var guildNames);
                     var displayName = name ?? Path.GetFileNameWithoutExtension(f);
                     var dt = savedAt ?? File.GetLastWriteTime(f);
                     grid.Rows.Add(idx.ToString(), displayName, dt.ToString("MM/dd HH:mm"));
@@ -145,7 +145,7 @@ namespace GrandBattleSupport
                         list.Add(new OwnerDto { Day = key.day, NodeId = key.nodeId, TeamId = _owner.GetOwner(key.day, key.nodeId) });
                     }
 
-                    var pkg = new SavePackage { Name = saveName, SavedAt = DateTime.Now, Data = list };
+                    var pkg = new SavePackage { Name = saveName, SavedAt = DateTime.Now, Data = list, GuildNames = _teamNames };
                     var safe = string.Concat(saveName.Select(ch => Path.GetInvalidFileNameChars().Contains(ch) ? '_' : ch));
                     var fn = DateTime.Now.ToString("yyyyMMdd_HHmmss") + "_" + (string.IsNullOrEmpty(safe) ? "save" : safe) + ".json";
                     var path = Path.Combine(SaveFolder, fn);
@@ -173,10 +173,22 @@ namespace GrandBattleSupport
                     {
                         string? tmpName = null;
                         DateTime? tmpSaved = null;
-                        var arr = ReadOwnerListFromFile(path, out tmpName, out tmpSaved);
+                        string[]? tmpGuildNames = null;
+                        var arr = ReadOwnerListFromFile(path, out tmpName, out tmpSaved, out tmpGuildNames);
                         if (arr is null) throw new InvalidOperationException("ファイルの内容が不正です");
                         _owner.Clear();
                         foreach (var o in arr) _owner.SetOwner(o.Day, o.NodeId, o.TeamId);
+                        if (tmpGuildNames is not null)
+                        {
+                            for (int i = 0; i < TeamCount && i < tmpGuildNames.Length; i++)
+                            {
+                                _teamNames[i] = tmpGuildNames[i];
+                                // update textboxes (this will also trigger TextChanged handlers to refresh displays)
+                                if (_teamNameBoxes is not null && _teamNameBoxes.Length > i && _teamNameBoxes[i] is not null)
+                                    _teamNameBoxes[i].Text = tmpGuildNames[i];
+                            }
+                            UpdateTeamNameDisplays();
+                        }
                         RefreshLeftGridForDay();
                         RefreshTotals();
                         _mapBox.Invalidate();
@@ -608,7 +620,9 @@ namespace GrandBattleSupport
                     list.Add(new OwnerDto { Day = key.day, NodeId = key.nodeId, TeamId = _owner.GetOwner(key.day, key.nodeId) });
                 }
 
-                var json = JsonSerializer.Serialize(list, new JsonSerializerOptions { WriteIndented = true });
+                // 保存時にギルド名も含める（パッケージ形式）
+                var pkg = new SavePackage { Name = null, SavedAt = DateTime.Now, Data = list, GuildNames = _teamNames };
+                var json = JsonSerializer.Serialize(pkg, new JsonSerializerOptions { WriteIndented = true });
                 // 一時保存として save フォルダ内に書き出す（拡張子 .tmp を付与）
                 Directory.CreateDirectory(SaveFolder);
                 var path = Path.Combine(SaveFolder, "owners.json.tmp");
@@ -625,15 +639,45 @@ namespace GrandBattleSupport
         {
             try
             {
-                var path = Path.Combine(SaveFolder, "owners.json");
-                if (!File.Exists(path)) return;
-                var json = File.ReadAllText(path);
-                var list = JsonSerializer.Deserialize<List<OwnerDto>>(json, JsonOpts());
-                if (list is null) return;
-                foreach (var o in list)
+                var path1 = Path.Combine(SaveFolder, "owners.json");
+                var pathTmp = Path.Combine(SaveFolder, "owners.json.tmp");
+
+                // Prefer the most recently modified of owners.json and owners.json.tmp
+                string? path = null;
+                if (File.Exists(path1) && File.Exists(pathTmp))
+                {
+                    path = File.GetLastWriteTimeUtc(path1) >= File.GetLastWriteTimeUtc(pathTmp) ? path1 : pathTmp;
+                }
+                else if (File.Exists(path1))
+                {
+                    path = path1;
+                }
+                else if (File.Exists(pathTmp))
+                {
+                    path = pathTmp;
+                }
+
+                if (path is null) return;
+
+                var arr = ReadOwnerListFromFile(path, out var name, out var savedAt, out var guildNames);
+                if (arr is null) return;
+                _owner.Clear();
+                foreach (var o in arr)
                 {
                     _owner.SetOwner(o.Day, o.NodeId, o.TeamId);
                 }
+
+                if (guildNames is not null)
+                {
+                    for (int i = 0; i < TeamCount && i < guildNames.Length; i++)
+                    {
+                        _teamNames[i] = guildNames[i];
+                        if (_teamNameBoxes is not null && _teamNameBoxes.Length > i && _teamNameBoxes[i] is not null)
+                            _teamNameBoxes[i].Text = guildNames[i];
+                    }
+                    UpdateTeamNameDisplays();
+                }
+
                 SetStatus($"{path} から所持状態を読み込みました");
             }
             catch (Exception ex)
@@ -654,13 +698,15 @@ namespace GrandBattleSupport
             public string? Name { get; set; }
             public DateTime SavedAt { get; set; }
             public List<OwnerDto>? Data { get; set; }
+            public string[]? GuildNames { get; set; }
         }
 
         // 保存形式（配列形式/パッケージ形式）の両方に対応して読込
-        private static List<OwnerDto>? ReadOwnerListFromFile(string path, out string? name, out DateTime? savedAt)
+        private static List<OwnerDto>? ReadOwnerListFromFile(string path, out string? name, out DateTime? savedAt, out string[]? guildNames)
         {
             name = null;
             savedAt = null;
+            guildNames = null;
             var json = File.ReadAllText(path);
             try
             {
@@ -669,6 +715,8 @@ namespace GrandBattleSupport
                 {
                     name = pkg.Name;
                     savedAt = pkg.SavedAt == default ? (DateTime?)File.GetLastWriteTime(path) : pkg.SavedAt;
+                    if (pkg.GuildNames is not null)
+                        guildNames = pkg.GuildNames;
                     return pkg.Data;
                 }
             }
@@ -773,13 +821,25 @@ namespace GrandBattleSupport
 
         private string BuildTeamOwnedText(int day, int teamId)
         {
-            var owned = _nodes.Values
+            var ownedNodes = _nodes.Values
                 .Where(n => _owner.GetOwner(day, n.Id) == teamId)
                 .OrderByDescending(n => n.Point)
                 .ThenBy(n => n.Id)
-                .Select(n => $"{n.Id}:{n.Name}({n.Point})");
+                .ToList();
 
-            return string.Join(", ", owned);
+            if (ownedNodes.Count == 0) return string.Empty;
+
+            // 当日のみのポイント合計を先頭に表示
+            var total = ownedNodes.Sum(n => n.Point);
+
+            // 城や教会は ID を表示しない（寺院は ID を表示）
+            var parts = ownedNodes.Select(n =>
+                (n.Type == NodeType.Castle || n.Type == NodeType.Church)
+                    ? $"{n.Name}({n.Point})"
+                    : $"{n.Id}:{n.Name}({n.Point})"
+            );
+
+            return $"{total}PT：{string.Join(", ", parts)}";
         }
 
         private void RefreshTotals()
